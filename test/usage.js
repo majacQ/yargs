@@ -1,10 +1,11 @@
 /* global describe, it, beforeEach */
 
-var checkUsage = require('./helpers/utils').checkOutput
-var chalk = require('chalk')
-var path = require('path')
-var yargs = require('../')
-var rebase = require('../yargs').rebase
+const checkUsage = require('./helpers/utils').checkOutput
+const chalk = require('chalk')
+const path = require('path')
+const yargs = require('../')
+const rebase = require('../yargs').rebase
+const YError = require('../lib/yerror')
 
 require('chai').should()
 
@@ -83,16 +84,16 @@ describe('usage tests', function () {
         r.exit.should.be.ok
       })
 
-      it('no failure occurs if the required arguments and the required number of commands are provided.', function () {
+      it('no failure occurs if the required arguments and the required number of commands are provided', function () {
         var r = checkUsage(function () {
           return yargs('wombat -w 10 -m 10')
             .usage('Usage: $0 -w NUM -m NUM')
             .command('wombat', 'wombat handlers')
             .demand(1, ['w', 'm'])
-            .strict()
             .wrap(null)
             .argv
         })
+
         r.result.should.have.property('w', 10)
         r.result.should.have.property('m', 10)
         r.result.should.have.property('_').with.length(1)
@@ -168,24 +169,6 @@ describe('usage tests', function () {
         ])
         r.logs.should.have.length(0)
         r.exit.should.be.ok
-      })
-
-      it('no failure occurs if the required arguments and the required number of commands are provided.', function () {
-        var r = checkUsage(function () {
-          return yargs('wombat -w 10 -m 10')
-            .usage('Usage: $0 -w NUM -m NUM')
-            .command('wombat', 'wombat handlers')
-            .require(1, ['w', 'm'])
-            .strict()
-            .wrap(null)
-            .argv
-        })
-        r.result.should.have.property('w', 10)
-        r.result.should.have.property('m', 10)
-        r.result.should.have.property('_').with.length(1)
-        r.should.have.property('errors').with.length(0)
-        r.should.have.property('logs').with.length(0)
-        r.should.have.property('exit', false)
       })
     })
 
@@ -482,7 +465,7 @@ describe('usage tests', function () {
                 describe: 'bar command'
               }
             }, function (argv) {
-              throw new Error('blah')
+              throw new YError('blah')
             })
             .fail(function (message, error, yargs) {
               yargs.showHelp()
@@ -534,14 +517,14 @@ describe('usage tests', function () {
                     })
                     .exitProcess(false)
                 }, function (argv) {
-                  throw new Error('foo')
+                  throw new YError('foo')
                 })
                 .argv
             } catch (error) {
 
             }
           })
-          r.logs.should.deep.equal([['Error', 'foo'], 'is triggered last'])
+          r.logs.should.deep.equal([['YError', 'foo'], 'is triggered last'])
           r.should.have.property('exit').and.be.false
         })
       })
@@ -1284,7 +1267,7 @@ describe('usage tests', function () {
         return this.skip()
       }
 
-      var width = require('window-size').width
+      var width = process.stdout.columns
 
       var r = checkUsage(function () {
         return yargs([])
@@ -1334,6 +1317,25 @@ describe('usage tests', function () {
         if (!line || line.match('Examples:') || line.match('Options:')) return
 
         line.length.should.lte(40)
+      })
+    })
+
+    it('should not wrap left-hand-column if no description is provided', function () {
+      var r = checkUsage(function () {
+        return yargs([])
+          .example('i am a fairly long example that is like really long woooo')
+          .demand('foo')
+          .wrap(50)
+          .argv
+      })
+
+      r.errors[0].split('\n').forEach(function (line, i) {
+        // ignore headings and blank lines.
+        if (!line.match('i am a fairly long example')) return
+
+        // with two white space characters on the left,
+        // line length should be 50 - 2
+        line.length.should.equal(48)
       })
     })
 
@@ -1578,7 +1580,7 @@ describe('usage tests', function () {
       ])
     })
 
-    it('preserves groups with global keys', function () {
+    it('allows global option to be disabled', function () {
       var r = checkUsage(function () {
         return yargs(['upload', '-h'])
           .command('upload', 'upload something', function (yargs) {
@@ -2331,7 +2333,7 @@ describe('usage tests', function () {
           .argv
       })
 
-      r.logs.join(' ').should.match(/\[count\]/)
+      r.logs.join(' ').should.match(/\[count]/)
     })
   })
 
@@ -2348,7 +2350,7 @@ describe('usage tests', function () {
           .argv
       })
 
-      r.logs.join(' ').should.match(/\[array\]/)
+      r.logs.join(' ').should.match(/\[array]/)
     })
   })
 
@@ -2515,6 +2517,30 @@ describe('usage tests', function () {
       r.errors.join('\n').split(/\n+/).should.deep.equal([
         'Examples:',
         '  안녕하세요 선생님 안녕 친구야  인사하는 어린이 착한 어린이',
+        ''
+      ])
+    })
+  })
+
+  describe('default command', function () {
+    it('--help should display top-level help with no command given', function () {
+      var r = checkUsage(function () {
+        return yargs('--help')
+          .command(['list [pattern]', 'ls', '*'], 'List key-value pairs for pattern', {}, function () {})
+          .command('get <key>', 'Get value for key', {}, function () {})
+          .command('set <key> [value]', 'Set value for key', {}, function () {})
+          .help()
+          .argv
+      })
+
+      r.logs[0].split('\n').should.deep.equal([
+        'Commands:',
+        '  list [pattern]     List key-value pairs for pattern    [default] [aliases: ls]',
+        '  get <key>          Get value for key',
+        '  set <key> [value]  Set value for key',
+        '',
+        'Options:',
+        '  --help  Show help                                                    [boolean]',
         ''
       ])
     })

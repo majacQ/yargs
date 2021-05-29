@@ -1,16 +1,21 @@
-/* global context, describe, it, beforeEach */
+/* global context, describe, it, beforeEach, afterEach */
 
 var expect = require('chai').expect
 var fs = require('fs')
 var path = require('path')
 var checkOutput = require('./helpers/utils').checkOutput
-var yargs = require('../')
+var yargs
+var YError = require('../lib/yerror')
 
 require('chai').should()
 
 describe('yargs dsl tests', function () {
   beforeEach(function () {
-    yargs.reset()
+    yargs = require('../')
+  })
+
+  afterEach(function () {
+    delete require.cache[require.resolve('../')]
   })
 
   it('should use bin name for $0, eliminating path', function () {
@@ -64,6 +69,8 @@ describe('yargs dsl tests', function () {
     })
 
     r.errors[0].should.match(/really cool key/)
+    r.result.should.have.property('x')
+    r.result.should.not.have.property('[object Object]')
   })
 
   it('treats usage as alias for options, if object provided as first argument', function () {
@@ -208,16 +215,20 @@ describe('yargs dsl tests', function () {
         .command('foo', 'bar', function () {})
         .default('foo', 'bar')
         .describe('foo', 'foo variable')
-        .demand('foo')
+        .demandCommand(1)
+        .demandOption('foo')
         .string('foo')
         .alias('foo', 'bar')
         .string('foo')
         .choices('foo', ['bar', 'baz'])
         .coerce('foo', function (foo) { return foo + 'bar' })
         .implies('foo', 'snuh')
+        .conflicts('qux', 'xyzzy')
         .group('foo', 'Group:')
-        .strict()
+        .strict(false)
         .exitProcess(false)  // defaults to true.
+        .global('foo', false)
+        .global('qux', false)
         .env('YARGS')
         .reset()
 
@@ -240,26 +251,34 @@ describe('yargs dsl tests', function () {
         config: {},
         configObjects: [],
         envPrefix: 'YARGS', // preserved as global
-        global: ['help'],
-        demanded: {}
+        demandedCommands: {},
+        demandedOptions: {},
+        local: [
+          '_',
+          'foo',
+          'qux'
+        ]
       }
 
       expect(y.getOptions()).to.deep.equal(emptyOptions)
       expect(y.getUsageInstance().getDescriptions()).to.deep.equal({help: '__yargsString__:Show help'})
       expect(y.getValidationInstance().getImplied()).to.deep.equal({})
+      expect(y.getValidationInstance().getConflicting()).to.deep.equal({})
       expect(y.getCommandInstance().getCommandHandlers()).to.deep.equal({})
       expect(y.getExitProcess()).to.equal(false)
       expect(y.getStrict()).to.equal(false)
-      expect(y.getDemanded()).to.deep.equal({})
+      expect(y.getDemandedOptions()).to.deep.equal({})
+      expect(y.getDemandedCommands()).to.deep.equal({})
       expect(y.getGroups()).to.deep.equal({})
     })
 
-    it('does not invoke parse with an error if reset has been called', function (done) {
+    it('does not invoke parse with an error if reset has been called and option is not global', function (done) {
       var y = yargs()
         .demand('cake')
+        .global('cake', false)
 
       y.parse('hello', function (err) {
-        err.message.should.match(/Missing required argumen/)
+        err.message.should.match(/Missing required argument/)
       })
       y.reset()
       y.parse('cake', function (err) {
@@ -318,6 +337,21 @@ describe('yargs dsl tests', function () {
       })
 
       r.errors[1].should.match(/Did you mean goat/)
+    })
+
+    // see: https://github.com/yargs/yargs/issues/822
+    it('does not print help message if recommendation has been made', function (done) {
+      const parser = yargs()
+        .command('goat')
+        .help()
+        .recommendCommands()
+
+      parser.parse('boat help', {}, function (err, _argv, output) {
+        // it should not have printed the help text twice!
+        err.message.should.equal('Did you mean goat?')
+        output.split('Commands:').length.should.equal(2)
+        return done()
+      })
     })
 
     it("skips executing top-level command if builder's help is executed", function () {
@@ -450,7 +484,7 @@ describe('yargs dsl tests', function () {
           builder: function (yargs) { return yargs },
           handler: function (argv) {}
         })
-      }).to.throw(/No command name given for module: { desc: 'A command with no name',\n {2}builder: \[Function(: builder)?\],\n {2}handler: \[Function(: handler)?\] }/)
+      }).to.throw(/No command name given for module: {(\s+)desc: 'A command with no name',\n {2}builder: \[Function(: builder)?],\n {2}handler: \[Function(: handler)?]\s}/)
     })
   })
 
@@ -754,6 +788,14 @@ describe('yargs dsl tests', function () {
       a1.foo.should.equal('bar')
       a1.context.should.equal('look at me go!')
     })
+
+    // see https://github.com/yargs/yargs/issues/724
+    it('overrides parsed value of argv with context object', function () {
+      var a1 = yargs.parse('-x=33', {
+        x: 42
+      })
+      a1.x.should.equal(42)
+    })
   })
 
   // yargs.parse(['foo', '--bar'], function (err, argv, output) {}
@@ -809,7 +851,7 @@ describe('yargs dsl tests', function () {
       })
       r.logs.length.should.equal(0)
       r.errors.length.should.equal(0)
-      output.should.match(/--robin.*\[required\]/)
+      output.should.match(/--robin.*\[required]/)
     })
 
     it('reinstates original exitProcess setting after invocation', function () {
@@ -848,7 +890,7 @@ describe('yargs dsl tests', function () {
       r1.exit.should.be.false
       r2.exit.should.be.true
       r2.errors.length.should.equal(0)
-      r2.logs[0].should.match(/--help.*Show help.*\[boolean\]/)
+      r2.logs[0].should.match(/--help.*Show help.*\[boolean]/)
     })
 
     it('resets error state between calls to parse', function () {
@@ -1116,6 +1158,7 @@ describe('yargs dsl tests', function () {
         .config('config', function (path) {
           return JSON.parse(fs.readFileSync(path))
         })
+        .global('config', false)
         .argv
 
       argv.foo.should.equal('baz')
@@ -1124,7 +1167,8 @@ describe('yargs dsl tests', function () {
     it('allows key to be specified with option shorthand', function () {
       var argv = yargs('--config ./test/fixtures/config.json')
         .option('config', {
-          config: true
+          config: true,
+          global: false
         })
         .argv
 
@@ -1138,6 +1182,42 @@ describe('yargs dsl tests', function () {
 
       argv.foo.should.equal(1)
       argv.bar.should.equal(2)
+    })
+
+    describe('extends', function () {
+      it('applies default configurations when given config object', function () {
+        var argv = yargs
+          .config({
+            extends: './test/fixtures/extends/config_1.json',
+            a: 1
+          })
+          .argv
+
+        argv.a.should.equal(1)
+        argv.b.should.equal(22)
+        argv.z.should.equal(15)
+      })
+
+      it('protects against circular extended configurations', function () {
+        expect(function () {
+          yargs.config({extends: './test/fixtures/extends/circular_1.json'})
+        }).to.throw(YError)
+      })
+
+      it('handles aboslute paths', function () {
+        var absolutePath = path.join(process.cwd(), 'test', 'fixtures', 'extends', 'config_1.json')
+
+        var argv = yargs
+          .config({
+            a: 2,
+            extends: absolutePath
+          })
+          .argv
+
+        argv.a.should.equal(2)
+        argv.b.should.equal(22)
+        argv.z.should.equal(15)
+      })
     })
   })
 
@@ -1211,7 +1291,8 @@ describe('yargs dsl tests', function () {
           nargs: 2
         })
         .option('bar', {
-          nargs: 2
+          nargs: 2,
+          global: false
         })
         .global('foo')
         .reset()
@@ -1231,7 +1312,8 @@ describe('yargs dsl tests', function () {
         .option('bar', {
           nargs: 2,
           string: true,
-          demand: true
+          demand: true,
+          global: false
         })
         .global('foo')
         .reset({
@@ -1241,25 +1323,25 @@ describe('yargs dsl tests', function () {
 
       options.key.foo.should.equal(true)
       options.string.should.include('awesome-sauce')
-      Object.keys(options.demanded).should.include('awesomeSauce')
+      Object.keys(options.demandedOptions).should.include('awesomeSauce')
 
       expect(options.key.bar).to.equal(undefined)
       options.string.should.not.include('bar')
-      Object.keys(options.demanded).should.not.include('bar')
+      Object.keys(options.demandedOptions).should.not.include('bar')
     })
 
     it('should set help to global option by default', function () {
       var y = yargs('--foo')
         .help('help')
       var options = y.getOptions()
-      options.global.should.include('help')
+      options.local.should.not.include('help')
     })
 
     it('should set version to global option by default', function () {
       var y = yargs('--foo')
         .version()
       var options = y.getOptions()
-      options.global.should.include('version')
+      options.local.should.not.include('version')
     })
 
     it('should not reset usage descriptions of global options', function () {
@@ -1267,6 +1349,7 @@ describe('yargs dsl tests', function () {
         .describe('bar', 'my awesome bar option')
         .describe('foo', 'my awesome foo option')
         .global('foo')
+        .global('bar', false)
         .reset()
       var descriptions = y.getUsageInstance().getDescriptions()
       Object.keys(descriptions).should.include('foo')
@@ -1281,7 +1364,7 @@ describe('yargs dsl tests', function () {
         .implies({
           z: 'w'
         })
-        .global(['x'])
+        .global(['z'], false)
         .reset()
       var implied = y.getValidationInstance().getImplied()
       Object.keys(implied).should.include('x')
@@ -1291,11 +1374,11 @@ describe('yargs dsl tests', function () {
     it('should expose an options short-hand for declaring global options', function () {
       var y = yargs('--foo a b c')
         .option('foo', {
-          nargs: 2,
-          global: true
+          nargs: 2
         })
         .option('bar', {
-          nargs: 2
+          nargs: 2,
+          global: false
         })
         .reset()
       var options = y.getOptions()
@@ -1391,6 +1474,20 @@ describe('yargs dsl tests', function () {
         .argv
 
       argv.foo.should.equal('a')
+    })
+
+    it('should apply default configurations from extended packages', function () {
+      var argv = yargs().pkgConf('foo', 'test/fixtures/extends/packageA').argv
+
+      argv.a.should.equal(80)
+      argv.b.should.equals('riffiwobbles')
+    })
+
+    it('should apply extended configurations from cwd when no path is given', function () {
+      var argv = yargs('', 'test/fixtures/extends/packageA').pkgConf('foo').argv
+
+      argv.a.should.equal(80)
+      argv.b.should.equals('riffiwobbles')
     })
   })
 
@@ -1741,8 +1838,14 @@ describe('yargs dsl tests', function () {
     it('allows an error to be handled by fail() handler', function () {
       var msg
       var err
+      var jsonErrMessage
       yargs('--json invalid')
         .coerce('json', function (arg) {
+          try {
+            JSON.parse(arg)
+          } catch (err) {
+            jsonErrMessage = err.message
+          }
           return JSON.parse(arg)
         })
         .fail(function (m, e) {
@@ -1750,7 +1853,7 @@ describe('yargs dsl tests', function () {
           err = e
         })
         .argv
-      expect(msg).to.match(/Unexpected token i/)
+      expect(msg).to.equal(jsonErrMessage)
       expect(err).to.exist
     })
 

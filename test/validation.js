@@ -1,7 +1,10 @@
 /* global describe, it, beforeEach */
 
+var checkUsage = require('./helpers/utils').checkOutput
 var expect = require('chai').expect
 var yargs = require('../')
+
+require('chai').should()
 
 describe('validation tests', function () {
   beforeEach(function () {
@@ -12,7 +15,7 @@ describe('validation tests', function () {
     it("fails if '_' populated, and implied argument not set", function (done) {
       yargs(['cat'])
         .implies({
-          1: 'foo'
+          1: 'foo' // 1 arg in _ means --foo is required
         })
         .fail(function (msg) {
           msg.should.match(/Implications failed/)
@@ -25,7 +28,7 @@ describe('validation tests', function () {
       yargs(['--foo'])
         .boolean('foo')
         .implies({
-          'foo': 1
+          'foo': 1 // --foo means 1 arg in _ is required
         })
         .fail(function (msg) {
           msg.should.match(/Implications failed/)
@@ -37,7 +40,7 @@ describe('validation tests', function () {
     it("fails if --no-foo's implied argument is not set", function (done) {
       yargs([])
         .implies({
-          '--no-bar': 'foo'
+          '--no-bar': 'foo' // when --bar is not given, --foo is required
         })
         .fail(function (msg) {
           msg.should.match(/Implications failed/)
@@ -49,7 +52,7 @@ describe('validation tests', function () {
     it('fails if a key is set, along with a key that it implies should not be set', function (done) {
       yargs(['--bar', '--foo'])
         .implies({
-          'bar': '--no-foo'
+          'bar': '--no-foo' // --bar means --foo cannot be given
         })
         .fail(function (msg) {
           msg.should.match(/Implications failed/)
@@ -58,16 +61,140 @@ describe('validation tests', function () {
         .argv
     })
 
-    it('does not treat --no- as a special case if boolean negation is disabled', function (done) {
-      yargs(['--foo'], './test/fixtures')
+    it('fails if implied key (with "no" in the name) is not set', function () {
+      var failCalled = false
+      yargs('--bar')
         .implies({
-          'foo': '--no-foo'
+          'bar': 'noFoo' // --bar means --noFoo (or --no-foo with boolean-negation disabled) is required
+                         // note that this has nothing to do with --foo
+        })
+        .fail(function (msg) {
+          failCalled = true
+          msg.should.match(/Implications failed/)
+        })
+        .argv
+      failCalled.should.be.true
+    })
+
+    it('doesn\'t fail if implied key (with "no" in the name) is set', function () {
+      var failCalled = false
+      const argv = yargs('--bar --noFoo')
+        .implies({
+          'bar': 'noFoo' // --bar means --noFoo (or --no-foo with boolean-negation disabled) is required
+                         // note that this has nothing to do with --foo
+        })
+        .fail(function (msg) {
+          failCalled = true
+        })
+        .argv
+      failCalled.should.be.false
+      expect(argv.bar).to.be.true
+      expect(argv.noFoo).to.be.true
+      expect(argv.foo).to.not.exist
+    })
+
+    it('fails if implied key (with "no" in the name) is given when it should not', function () {
+      var failCalled = false
+      yargs('--bar --noFoo')
+        .implies({
+          'bar': '--no-noFoo' // --bar means --noFoo (or --no-foo with boolean-negation disabled) cannot be given
+                              // note that this has nothing to do with --foo
+        })
+        .fail(function (msg) {
+          failCalled = true
+          msg.should.match(/Implications failed/)
+        })
+        .argv
+      failCalled.should.be.true
+    })
+
+    it('doesn\'t fail if implied key (with "no" in the name) that should not be given is not set', function () {
+      var failCalled = false
+      const argv = yargs('--bar')
+        .implies({
+          'bar': '--no-noFoo' // --bar means --noFoo (or --no-foo with boolean-negation disabled) cannot be given
+                              // note that this has nothing to do with --foo
+        })
+        .fail(function (msg) {
+          failCalled = true
+        })
+        .argv
+      failCalled.should.be.false
+      expect(argv.bar).to.be.true
+      expect(argv.noFoo).to.not.exist
+      expect(argv.foo).to.not.exist
+    })
+
+    it('allows key to be specified with option shorthand', function (done) {
+      yargs('--bar')
+        .option('bar', {
+          implies: 'foo'
         })
         .fail(function (msg) {
           msg.should.match(/Implications failed/)
           return done()
         })
         .argv
+    })
+  })
+
+  describe('conflicts', function () {
+    it('fails if both arguments are supplied', function (done) {
+      yargs(['-f', '-b'])
+          .conflicts('f', 'b')
+          .fail(function (msg) {
+            msg.should.equal('Arguments f and b are mutually exclusive')
+            return done()
+          })
+          .argv
+    })
+
+    it('should not fail if no conflicting arguments are provided', function () {
+      yargs(['-b', '-c'])
+        .conflicts('f', 'b')
+        .fail(function (msg) {
+          expect.fail()
+        })
+        .argv
+    })
+
+    it('allows an object to be provided defining conflicting option pairs', function (done) {
+      yargs(['-t', '-s'])
+        .conflicts({
+          'c': 'a',
+          's': 't'
+        })
+        .fail(function (msg) {
+          msg.should.equal('Arguments s and t are mutually exclusive')
+          return done()
+        })
+        .argv
+    })
+
+    it('takes into account aliases when applying conflicts logic', function (done) {
+      yargs(['-t', '-c'])
+        .conflicts({
+          'c': 'a',
+          's': 't'
+        })
+        .alias('c', 's')
+        .fail(function (msg) {
+          msg.should.equal('Arguments s and t are mutually exclusive')
+          return done()
+        })
+        .argv
+    })
+
+    it('allows key to be specified with option shorthand', function (done) {
+      yargs(['-f', '-b'])
+          .option('f', {
+            conflicts: 'b'
+          })
+          .fail(function (msg) {
+            msg.should.equal('Arguments f and b are mutually exclusive')
+            return done()
+          })
+          .argv
     })
   })
 
@@ -106,6 +233,43 @@ describe('validation tests', function () {
       argv._[0].should.equal('koala')
     })
 
+    // addresses: https://github.com/yargs/yargs/issues/791
+    it('should recognize context variables in strict mode', function (done) {
+      yargs()
+        .command('foo <y>')
+        .strict()
+        .parse('foo 99', {x: 33}, function (err, argv, output) {
+          expect(err).to.equal(null)
+          expect(output).to.equal('')
+          argv.y.should.equal(99)
+          argv.x.should.equal(33)
+          argv._.should.include('foo')
+          return done()
+        })
+    })
+
+    // addresses: https://github.com/yargs/yargs/issues/791
+    it('should recognize context variables in strict mode, when running sub-commands', function (done) {
+      yargs()
+        .command('request', 'request command', function (yargs) {
+          yargs
+            .command('get', 'sub-command')
+            .option('y', {
+              describe: 'y inner option'
+            })
+        })
+        .strict()
+        .parse('request get --y=22', {x: 33}, function (err, argv, output) {
+          expect(err).to.equal(null)
+          expect(output).to.equal('')
+          argv.y.should.equal(22)
+          argv.x.should.equal(33)
+          argv._.should.include('request')
+          argv._.should.include('get')
+          return done()
+        })
+    })
+
     it('fails when a required argument is missing', function (done) {
       yargs('-w 10 marsupial')
         .demand(1, ['w', 'b'])
@@ -131,6 +295,17 @@ describe('validation tests', function () {
         .demand(1, null)
         .fail(function (msg) {
           expect(msg).to.equal(null)
+          return done()
+        })
+        .argv
+    })
+
+    // address regression in: https://github.com/yargs/yargs/pull/740
+    it('custom failure message should be printed for both min and max constraints', function (done) {
+      yargs(['foo'])
+        .demand(0, 0, 'hey! give me a custom exit message')
+        .fail(function (msg) {
+          expect(msg).to.equal('hey! give me a custom exit message')
           return done()
         })
         .argv
@@ -259,7 +434,6 @@ describe('validation tests', function () {
     })
 
     it('should be displayed in the help message', function () {
-      var checkUsage = require('./helpers/utils').checkOutput
       var r = checkUsage(function () {
         return yargs(['--help'])
           .config('settings')
@@ -383,6 +557,82 @@ describe('validation tests', function () {
             })
         }, function (argv) {
           argv._[0].should.equal('one')
+        })
+        .argv
+    })
+  })
+
+  describe('demandOption', function () {
+    it('allows an array of options to be demanded', function (done) {
+      yargs('-a 10 marsupial')
+        .demandOption(['a', 'b'])
+        .fail(function (msg) {
+          msg.should.equal('Missing required argument: b')
+          return done()
+        })
+        .argv
+    })
+
+    it('allows demandOption in option shorthand', function (done) {
+      yargs('-a 10 marsupial')
+        .option('c', {
+          demandOption: true
+        })
+        .fail(function (msg) {
+          msg.should.equal('Missing required argument: c')
+          return done()
+        })
+        .argv
+    })
+  })
+
+  describe('demandCommand', function () {
+    it('should return a custom failure message when too many non-hyphenated arguments are found after a demand count', function () {
+      var r = checkUsage(function () {
+        return yargs(['src', 'dest'])
+          .usage('Usage: $0 [x] [y] [z] {OPTIONS} <src> <dest> [extra_files...]')
+          .demandCommand(0, 1, 'src and dest files are both required', 'too many arguments are provided')
+          .wrap(null)
+          .argv
+      })
+      r.should.have.property('result')
+      r.should.have.property('logs').with.length(0)
+      r.should.have.property('exit').and.be.ok
+      r.result.should.have.property('_').and.deep.equal(['src', 'dest'])
+      r.errors.join('\n').split(/\n+/).should.deep.equal([
+        'Usage: ./usage [x] [y] [z] {OPTIONS} <src> <dest> [extra_files...]',
+        'too many arguments are provided'
+      ])
+    })
+
+    // see: https://github.com/yargs/yargs/pull/438
+    it('allows a custom min message to be provided', function (done) {
+      yargs('-a 10 marsupial')
+        .demandCommand(2, 'totes got $0 totes expected $1')
+        .fail(function (msg) {
+          msg.should.equal('totes got 1 totes expected 2')
+          return done()
+        })
+        .argv
+    })
+
+    // see: https://github.com/yargs/yargs/pull/438
+    it('allows a custom min and max message to be provided', function (done) {
+      yargs('-a 10 marsupial mammal bro')
+        .demandCommand(1, 2, 'totes too few, got $0 totes expected $1', 'totes too many, got $0 totes expected $1')
+        .fail(function (msg) {
+          msg.should.equal('totes too many, got 3 totes expected 2')
+          return done()
+        })
+        .argv
+    })
+
+    it('defaults to demanding 1 command', function (done) {
+      yargs('-a 10')
+        .demandCommand()
+        .fail(function (msg) {
+          msg.should.equal('Not enough non-option arguments: got 0, need at least 1')
+          return done()
         })
         .argv
     })

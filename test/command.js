@@ -19,11 +19,11 @@ describe('Command', function () {
       var command = y.getCommandInstance()
       var handlers = command.getCommandHandlers()
       handlers.foo.demanded.should.include({
-        cmd: 'bar',
+        cmd: ['bar'],
         variadic: false
       })
       handlers.foo.optional.should.include({
-        cmd: 'awesome',
+        cmd: ['awesome'],
         variadic: false
       })
     })
@@ -96,7 +96,7 @@ describe('Command', function () {
       var command = y.getCommandInstance()
       var handlers = command.getCommandHandlers()
       handlers.foo.optional.should.include({
-        cmd: 'awesome',
+        cmd: ['awesome'],
         variadic: false
       })
       handlers.foo.demanded.should.deep.equal([])
@@ -181,21 +181,23 @@ describe('Command', function () {
     it('accepts string, string as first 2 arguments', function () {
       var cmd = 'foo'
       var desc = 'i\'m not feeling very creative at the moment'
+      var isDefault = false
       var aliases = []
 
       var y = yargs([]).command(cmd, desc)
       var commands = y.getUsageInstance().getCommands()
-      commands[0].should.deep.equal([cmd, desc, aliases])
+      commands[0].should.deep.equal([cmd, desc, isDefault, aliases])
     })
 
     it('accepts array, string as first 2 arguments', function () {
       var aliases = ['bar', 'baz']
       var cmd = 'foo <qux>'
       var desc = 'i\'m not feeling very creative at the moment'
+      var isDefault = false
 
       var y = yargs([]).command([cmd].concat(aliases), desc)
       var usageCommands = y.getUsageInstance().getCommands()
-      usageCommands[0].should.deep.equal([cmd, desc, aliases])
+      usageCommands[0].should.deep.equal([cmd, desc, isDefault, aliases])
       var cmdCommands = y.getCommandInstance().getCommands()
       cmdCommands.should.deep.equal(['foo', 'bar', 'baz'])
     })
@@ -284,6 +286,7 @@ describe('Command', function () {
         builder: function (yargs) { return yargs },
         handler: function (argv) {}
       }
+      var isDefault = false
       var aliases = []
 
       var y = yargs([]).command(module)
@@ -292,7 +295,7 @@ describe('Command', function () {
       handlers.foo.builder.should.equal(module.builder)
       handlers.foo.handler.should.equal(module.handler)
       var commands = y.getUsageInstance().getCommands()
-      commands[0].should.deep.equal([module.command, module.describe, aliases])
+      commands[0].should.deep.equal([module.command, module.describe, isDefault, aliases])
     })
 
     it('accepts module (description key, builder function) as 1st argument', function () {
@@ -302,6 +305,7 @@ describe('Command', function () {
         builder: function (yargs) { return yargs },
         handler: function (argv) {}
       }
+      var isDefault = false
       var aliases = []
 
       var y = yargs([]).command(module)
@@ -310,7 +314,7 @@ describe('Command', function () {
       handlers.foo.builder.should.equal(module.builder)
       handlers.foo.handler.should.equal(module.handler)
       var commands = y.getUsageInstance().getCommands()
-      commands[0].should.deep.equal([module.command, module.description, aliases])
+      commands[0].should.deep.equal([module.command, module.description, isDefault, aliases])
     })
 
     it('accepts module (desc key, builder function) as 1st argument', function () {
@@ -320,6 +324,7 @@ describe('Command', function () {
         builder: function (yargs) { return yargs },
         handler: function (argv) {}
       }
+      var isDefault = false
       var aliases = []
 
       var y = yargs([]).command(module)
@@ -328,7 +333,7 @@ describe('Command', function () {
       handlers.foo.builder.should.equal(module.builder)
       handlers.foo.handler.should.equal(module.handler)
       var commands = y.getUsageInstance().getCommands()
-      commands[0].should.deep.equal([module.command, module.desc, aliases])
+      commands[0].should.deep.equal([module.command, module.desc, isDefault, aliases])
     })
 
     it('accepts module (false describe, builder function) as 1st argument', function () {
@@ -375,6 +380,7 @@ describe('Command', function () {
         },
         handler: function (argv) {}
       }
+      var isDefault = false
       var aliases = []
 
       var y = yargs([]).command(module)
@@ -383,7 +389,7 @@ describe('Command', function () {
       handlers.foo.builder.should.equal(module.builder)
       handlers.foo.handler.should.equal(module.handler)
       var commands = y.getUsageInstance().getCommands()
-      commands[0].should.deep.equal([module.command, module.describe, aliases])
+      commands[0].should.deep.equal([module.command, module.describe, isDefault, aliases])
     })
 
     it('accepts module (missing handler function) as 1st argument', function () {
@@ -396,6 +402,7 @@ describe('Command', function () {
           }
         }
       }
+      var isDefault = false
       var aliases = []
 
       var y = yargs([]).command(module)
@@ -404,7 +411,7 @@ describe('Command', function () {
       handlers.foo.builder.should.equal(module.builder)
       expect(handlers.foo.handler).to.equal(undefined)
       var commands = y.getUsageInstance().getCommands()
-      commands[0].should.deep.equal([module.command, module.describe, aliases])
+      commands[0].should.deep.equal([module.command, module.describe, isDefault, aliases])
     })
 
     it('accepts module (with command array) as 1st argument', function () {
@@ -414,6 +421,7 @@ describe('Command', function () {
         builder: function (yargs) { return yargs },
         handler: function (argv) {}
       }
+      var isDefault = false
 
       var y = yargs([]).command(module)
       var handlers = y.getCommandInstance().getCommandHandlers()
@@ -421,7 +429,7 @@ describe('Command', function () {
       handlers.foo.builder.should.equal(module.builder)
       handlers.foo.handler.should.equal(module.handler)
       var usageCommands = y.getUsageInstance().getCommands()
-      usageCommands[0].should.deep.equal([module.command[0], module.describe, ['bar', 'baz']])
+      usageCommands[0].should.deep.equal([module.command[0], module.describe, isDefault, ['bar', 'baz']])
       var cmdCommands = y.getCommandInstance().getCommands()
       cmdCommands.should.deep.equal(['foo', 'bar', 'baz'])
     })
@@ -434,6 +442,7 @@ describe('Command', function () {
         builder: function (yargs) { return yargs },
         handler: function (argv) {}
       }
+      var isDefault = false
 
       var y = yargs([]).command(module)
       var handlers = y.getCommandInstance().getCommandHandlers()
@@ -441,7 +450,7 @@ describe('Command', function () {
       handlers.foo.builder.should.equal(module.builder)
       handlers.foo.handler.should.equal(module.handler)
       var usageCommands = y.getUsageInstance().getCommands()
-      usageCommands[0].should.deep.equal([module.command, module.describe, module.aliases])
+      usageCommands[0].should.deep.equal([module.command, module.describe, isDefault, module.aliases])
       var cmdCommands = y.getCommandInstance().getCommands()
       cmdCommands.should.deep.equal(['foo', 'bar', 'baz'])
     })
@@ -454,6 +463,7 @@ describe('Command', function () {
         builder: function (yargs) { return yargs },
         handler: function (argv) {}
       }
+      var isDefault = false
 
       var y = yargs([]).command(module)
       var handlers = y.getCommandInstance().getCommandHandlers()
@@ -461,7 +471,7 @@ describe('Command', function () {
       handlers.foo.builder.should.equal(module.builder)
       handlers.foo.handler.should.equal(module.handler)
       var usageCommands = y.getUsageInstance().getCommands()
-      usageCommands[0].should.deep.equal([module.command[0], module.describe, ['bar', 'baz', 'nat']])
+      usageCommands[0].should.deep.equal([module.command[0], module.describe, isDefault, ['bar', 'baz', 'nat']])
       var cmdCommands = y.getCommandInstance().getCommands()
       cmdCommands.should.deep.equal(['foo', 'bar', 'baz', 'nat'])
     })
@@ -474,6 +484,7 @@ describe('Command', function () {
         builder: function (yargs) { return yargs },
         handler: function (argv) {}
       }
+      var isDefault = false
 
       var y = yargs([]).command(module)
       var handlers = y.getCommandInstance().getCommandHandlers()
@@ -481,7 +492,7 @@ describe('Command', function () {
       handlers.foo.builder.should.equal(module.builder)
       handlers.foo.handler.should.equal(module.handler)
       var usageCommands = y.getUsageInstance().getCommands()
-      usageCommands[0].should.deep.equal([module.command, module.describe, ['bar']])
+      usageCommands[0].should.deep.equal([module.command, module.describe, isDefault, ['bar']])
       var cmdCommands = y.getCommandInstance().getCommands()
       cmdCommands.should.deep.equal(['foo', 'bar'])
     })
@@ -735,6 +746,33 @@ describe('Command', function () {
     argv.second.should.equal('bar')
   })
 
+  // addresses https://github.com/yargs/yargs/issues/710
+  it('invokes command handler repeatedly if parse() is called multiple times', function () {
+    var counter = 0
+    var y = yargs([])
+      .command('foo', 'the foo command', {}, function (argv) {
+        counter++
+      })
+    y.parse(['foo'])
+    y.parse(['foo'])
+    counter.should.equal(2)
+  })
+
+  // addresses: https://github.com/yargs/yargs/issues/776
+  it('allows command handler to be invoked repeatedly when help is enabled', function (done) {
+    var counter = 0
+    var y = yargs([])
+      .command('foo', 'the foo command', {}, function (argv) {
+        counter++
+      })
+      .help()
+    y.parse(['foo'], function () {})
+    y.parse(['foo'], function () {
+      counter.should.equal(2)
+      return done()
+    })
+  })
+
   // addresses https://github.com/yargs/yargs/issues/522
   it('does not require builder function to return', function () {
     var argv = yargs('yo')
@@ -794,5 +832,499 @@ describe('Command', function () {
       .argv
     argv.should.have.property('someone').and.equal('world')
     commandCalled.should.be.true
+  })
+
+  describe('positional aliases', function () {
+    it('allows an alias to be defined for a required positional argument', function () {
+      var argv = yargs('yo bcoe 113993')
+        .command('yo <user | email> [ssn]', 'Send someone a yo')
+        .argv
+      argv.user.should.equal('bcoe')
+      argv.email.should.equal('bcoe')
+      argv.ssn.should.equal(113993)
+    })
+
+    it('allows an alias to be defined for an optional positional argument', function () {
+      var argv
+      yargs('yo 113993')
+        .command('yo [ssn|sin]', 'Send someone a yo', {}, function (_argv) {
+          argv = _argv
+        })
+        .argv
+      argv.ssn.should.equal(113993)
+      argv.sin.should.equal(113993)
+    })
+
+    it('allows variadic and positional arguments to be combined', function () {
+      var parser = yargs
+        .command('yo <user|email> [ ssns | sins... ]', 'Send someone a yo')
+      var argv = parser.parse('yo bcoe 113993 112888')
+      argv.user.should.equal('bcoe')
+      argv.email.should.equal('bcoe')
+      argv.ssns.should.deep.equal([113993, 112888])
+      argv.sins.should.deep.equal([113993, 112888])
+    })
+  })
+
+  describe('global parsing hints', function () {
+    describe('config', function () {
+      it('does not load config for command if global is false', function (done) {
+        yargs('command --foo ./package.json')
+          .command('command', 'a command', {}, function (argv) {
+            expect(argv.license).to.equal(undefined)
+            return done()
+          })
+          .config('foo')
+          .global('foo', false)
+          .argv
+      })
+
+      it('loads config for command by default', function (done) {
+        yargs('command --foo ./package.json')
+          .command('command', 'a command', {}, function (argv) {
+            argv.license.should.equal('MIT')
+            return done()
+          })
+          .config('foo')
+          .argv
+      })
+    })
+
+    describe('validation', function () {
+      it('resets implies logic for command if global is false', function (done) {
+        yargs('command --foo 99')
+          .command('command', 'a command', {}, function (argv) {
+            argv.foo.should.equal(99)
+            return done()
+          })
+          .implies('foo', 'bar')
+          .global('foo', false)
+          .argv
+      })
+
+      it('applies conflicts logic for command by default', function (done) {
+        yargs('command --foo --bar')
+          .command('command', 'a command', {}, function (argv) {})
+          .fail(function (msg) {
+            msg.should.match(/mutually exclusive/)
+            return done()
+          })
+          .conflicts('foo', 'bar')
+          .argv
+      })
+
+      it('resets conflicts logic for command if global is false', function (done) {
+        yargs('command --foo --bar')
+          .command('command', 'a command', {}, function (argv) {
+            argv.foo.should.equal(true)
+            argv.bar.should.equal(true)
+            return done()
+          })
+          .conflicts('foo', 'bar')
+          .global('foo', false)
+          .argv
+      })
+
+      it('applies custom checks globally by default', function (done) {
+        yargs('command blerg --foo')
+          .command('command <snuh>', 'a command')
+          .check(function (argv) {
+            argv.snuh.should.equal('blerg')
+            argv.foo.should.equal(true)
+            argv._.should.include('command')
+            done()
+            return true
+          })
+          .argv
+      })
+
+      it('resets custom check if global is false', function () {
+        var checkCalled = false
+        yargs('command blerg --foo')
+          .command('command <snuh>', 'a command')
+          .check(function (argv) {
+            checkCalled = true
+            return true
+          }, false)
+          .argv
+        checkCalled.should.equal(false)
+      })
+
+      it('applies demandOption globally', function (done) {
+        yargs('command blerg --foo')
+          .command('command <snuh>', 'a command')
+          .fail(function (msg) {
+            msg.should.match(/Missing required argument: bar/)
+            return done()
+          })
+          .demandOption('bar')
+          .argv
+      })
+    })
+
+    describe('strict', function () {
+      it('defaults to false when not called', function () {
+        var commandCalled = false
+        yargs('hi')
+          .command('hi', 'The hi command', function (innerYargs) {
+            commandCalled = true
+            innerYargs.getStrict().should.be.false
+          })
+        yargs.getStrict().should.be.false
+        yargs.argv // parse and run command
+        commandCalled.should.be.true
+      })
+
+      it('can be enabled just for a command', function () {
+        var commandCalled = false
+        yargs('hi')
+          .command('hi', 'The hi command', function (innerYargs) {
+            commandCalled = true
+            innerYargs.strict().getStrict().should.be.true
+          })
+        yargs.getStrict().should.be.false
+        yargs.argv // parse and run command
+        commandCalled.should.be.true
+      })
+
+      it('applies strict globally by default', function () {
+        var commandCalled = false
+        yargs('hi')
+          .strict()
+          .command('hi', 'The hi command', function (innerYargs) {
+            commandCalled = true
+            innerYargs.getStrict().should.be.true
+          })
+        yargs.getStrict().should.be.true
+        yargs.argv // parse and run command
+        commandCalled.should.be.true
+      })
+
+      it('does not apply strict globally when passed value of `false`', function () {
+        var commandCalled = false
+        yargs('hi')
+          .strict(false)
+          .command('hi', 'The hi command', function (innerYargs) {
+            commandCalled = true
+            innerYargs.getStrict().should.be.false
+          })
+        yargs.getStrict().should.be.true
+        yargs.argv // parse and run command
+        commandCalled.should.be.true
+      })
+
+      // address regression introduced in #766, thanks @nexdrew!
+      it('does not fail strict check due to postional command arguments', function (done) {
+        yargs()
+          .strict()
+          .command('hi <name>', 'The hi command')
+          .parse('hi ben', function (err, argv, output) {
+            expect(err).to.equal(null)
+            return done()
+          })
+      })
+
+      // address https://github.com/yargs/yargs/issues/795
+      it('does not fail strict check due to postional command arguments in nested commands', function (done) {
+        yargs()
+          .strict()
+          .command('hi', 'The hi command', function (yargs) {
+            yargs.command('ben <age>', 'ben command', function () {}, function () {})
+          })
+          .parse('hi ben 99', function (err, argv, output) {
+            expect(err).to.equal(null)
+            return done()
+          })
+      })
+
+      it('does not fire command if validation fails', function (done) {
+        var commandRun = false
+        yargs()
+          .strict()
+          .command('hi <name>', 'The hi command', function () {}, function (argv) {
+            commandRun = true
+          })
+          .parse('hi ben --hello=world', function (err, argv, output) {
+            commandRun.should.equal(false)
+            err.message.should.equal('Unknown argument: hello')
+            return done()
+          })
+      })
+    })
+
+    describe('types', function () {
+      it('applies array type globally', function () {
+        const argv = yargs('command --foo 1 2')
+          .command('command', 'a command')
+          .array('foo')
+          .argv
+        argv.foo.should.eql([1, 2])
+      })
+
+      it('allows global setting to be disabled for array type', function () {
+        const argv = yargs('command --foo 1 2')
+          .command('command', 'a command')
+          .array('foo')
+          .global('foo', false)
+          .argv
+        argv.foo.should.eql(1)
+      })
+
+      it('applies choices type globally', function (done) {
+        yargs('command --foo 99')
+          .command('command', 'a command')
+          .choices('foo', [33, 88])
+          .fail(function (msg) {
+            msg.should.match(/Choices: 33, 88/)
+            return done()
+          })
+          .argv
+      })
+    })
+
+    describe('aliases', function () {
+      it('defaults to applying aliases globally', function (done) {
+        yargs('command blerg --foo 22')
+          .command('command <snuh>', 'a command', {}, function (argv) {
+            argv.foo.should.equal(22)
+            argv.bar.should.equal(22)
+            argv.snuh.should.equal('blerg')
+            return done()
+          })
+          .alias('foo', 'bar')
+          .argv
+      })
+
+      it('allows global application of alias to be disabled', function (done) {
+        yargs('command blerg --foo 22')
+          .command('command <snuh>', 'a command', {}, function (argv) {
+            argv.foo.should.equal(22)
+            expect(argv.bar).to.equal(undefined)
+            argv.snuh.should.equal('blerg')
+            return done()
+          })
+          .option('foo', {
+            alias: 'bar',
+            global: false
+          })
+          .argv
+      })
+    })
+
+    describe('coerce', function () {
+      it('defaults to applying coerce rules globally', function (done) {
+        yargs('command blerg --foo 22')
+          .command('command <snuh>', 'a command', {}, function (argv) {
+            argv.foo.should.equal(44)
+            argv.snuh.should.equal('blerg')
+            return done()
+          })
+          .coerce('foo', function (arg) {
+            return arg * 2
+          })
+          .argv
+      })
+
+      // addresses https://github.com/yargs/yargs/issues/794
+      it('should bubble errors thrown by coerce function inside commands', function (done) {
+        yargs
+          .command('foo', 'the foo command', function (yargs) {
+            yargs.coerce('x', function (arg) {
+              throw Error('yikes an error')
+            })
+          })
+          .parse('foo -x 99', function (err) {
+            err.message.should.match(/yikes an error/)
+            return done()
+          })
+      })
+    })
+
+    describe('defaults', function () {
+      it('applies defaults globally', function (done) {
+        yargs('command --foo 22')
+          .command('command [snuh]', 'a command', {}, function (argv) {
+            argv.foo.should.equal(22)
+            argv.snuh.should.equal(55)
+            return done()
+          })
+          .default('snuh', 55)
+          .argv
+      })
+    })
+
+    describe('describe', function () {
+      it('flags an option as global if a description is set', function (done) {
+        yargs()
+          .command('command [snuh]', 'a command')
+          .describe('foo', 'an awesome argument')
+          .help()
+          .parse('command --help', function (err, argv, output) {
+            if (err) return done(err)
+            output.should.not.match(/Commands:/)
+            output.should.match(/an awesome argument/)
+            return done()
+          })
+      })
+    })
+
+    describe('help', function () {
+      it('applies help globally', function (done) {
+        yargs()
+          .command('command [snuh]', 'a command')
+          .describe('foo', 'an awesome argument')
+          .help('hellllllp')
+          .parse('command --hellllllp', function (err, argv, output) {
+            if (err) return done(err)
+            output.should.match(/--hellllllp {2}Show help/)
+            return done()
+          })
+      })
+    })
+
+    describe('version', function () {
+      it('applies version globally', function (done) {
+        yargs()
+          .command('command [snuh]', 'a command')
+          .describe('foo', 'an awesome argument')
+          .version('ver', 'show version', '9.9.9')
+          .parse('command --ver', function (err, argv, output) {
+            if (err) return done(err)
+            output.should.equal('9.9.9')
+            return done()
+          })
+      })
+    })
+
+    describe('groups', function () {
+      it('should apply custom option groups globally', function (done) {
+        yargs()
+          .command('command [snuh]', 'a command')
+          .group('foo', 'Bad Variable Names:')
+          .group('snuh', 'Bad Variable Names:')
+          .describe('foo', 'foo option')
+          .describe('snuh', 'snuh positional')
+          .help()
+          .parse('command --help', function (err, argv, output) {
+            if (err) return done(err)
+            output.should.match(/Bad Variable Names:\W*--foo/)
+            return done()
+          })
+      })
+    })
+  })
+
+  describe('default commands', function () {
+    it('executes default command if no positional arguments given', function (done) {
+      yargs('--foo bar')
+        .command('*', 'default command', function () {}, function (argv) {
+          argv.foo.should.equal('bar')
+          return done()
+        })
+        .argv
+    })
+
+    it('does not execute default command if another command is provided', function (done) {
+      yargs('run bcoe --foo bar')
+        .command('*', 'default command', function () {}, function (argv) {})
+        .command('run <name>', 'run command', function () {}, function (argv) {
+          argv.name.should.equal('bcoe')
+          argv.foo.should.equal('bar')
+          return done()
+        })
+        .argv
+    })
+
+    it('allows default command to be set as alias', function (done) {
+      yargs('bcoe --foo bar')
+        .command(['start <name>', '*'], 'start command', function () {}, function (argv) {
+          argv._.should.eql([])
+          argv.name.should.equal('bcoe')
+          argv.foo.should.equal('bar')
+          return done()
+        })
+        .argv
+    })
+
+    it('allows command to be run when alias is default command', function (done) {
+      yargs('start bcoe --foo bar')
+        .command(['start <name>', '*'], 'start command', function () {}, function (argv) {
+          argv._.should.eql(['start'])
+          argv.name.should.equal('bcoe')
+          argv.foo.should.equal('bar')
+          return done()
+        })
+        .argv
+    })
+
+    it('the last default command set should take precedence', function (done) {
+      yargs('bcoe --foo bar')
+        .command(['first', '*'], 'override me', function () {}, function () {})
+        .command(['second <name>', '*'], 'start command', function () {}, function (argv) {
+          argv._.should.eql([])
+          argv.name.should.equal('bcoe')
+          argv.foo.should.equal('bar')
+          return done()
+        })
+        .argv
+    })
+
+    describe('strict', function () {
+      it('executes default command when strict mode is enabled', function (done) {
+        yargs('--foo bar')
+          .command('*', 'default command', function () {}, function (argv) {
+            argv.foo.should.equal('bar')
+            return done()
+          })
+          .option('foo', {
+            describe: 'a foo command'
+          })
+          .strict()
+          .argv
+      })
+
+      it('allows default command aliases, when strict mode is enabled', function (done) {
+        yargs('bcoe --foo bar')
+          .command(['start <name>', '*'], 'start command', function () {}, function (argv) {
+            argv._.should.eql([])
+            argv.name.should.equal('bcoe')
+            argv.foo.should.equal('bar')
+            return done()
+          })
+          .strict()
+          .option('foo', {
+            describe: 'a foo command'
+          })
+          .argv
+      })
+    })
+  })
+
+  // addresses: https://github.com/yargs/yargs/issues/819
+  it('should kick along [demand] configuration to commands', function () {
+    var called = false
+    var r = checkOutput(function () {
+      yargs('foo')
+        .command('foo', 'foo command', function () {}, function (argv) {
+          called = true
+        })
+        .option('bar', {
+          describe: 'a foo command',
+          demand: true
+        })
+        .argv
+    })
+    called.should.equal(false)
+    r.errors.should.match(/Missing required argument/)
+  })
+
+  it('should support numeric commands', function () {
+    var output = []
+    yargs('1')
+      .command('1', 'numeric command', function (yargs) {
+        output.push('1')
+      })
+      .argv
+    output.should.include('1')
   })
 })
