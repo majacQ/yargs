@@ -14,10 +14,11 @@ commands. tldr; default commands allow you to define the entry point to your
 application using a similar API to subcommands.
 
 ```js
-const argv = require('yargs')
+const argv = require('yargs/yargs')(process.argv.slice(2))
   .command('$0', 'the default command', () => {}, (argv) => {
     console.log('this command will be run by default')
   })
+  .argv
 ```
 
 The command defined above will be executed if the program
@@ -26,10 +27,11 @@ is run with `./my-cli.js --x=22`.
 Default commands can also be used as a command alias, like so:
 
 ```js
-const argv = require('yargs')
+const argv = require('yargs/yargs')(process.argv.slice(2))
   .command(['serve', '$0'], 'the serve command', () => {}, (argv) => {
     console.log('this command will be run by default')
   })
+  .argv
 ```
 
 The command defined above will be executed if the program
@@ -122,7 +124,7 @@ line, the command will be executed.
 
 ```js
 #!/usr/bin/env node
-require('yargs')
+require('yargs/yargs')(process.argv.slice(2))
   .command(['start [app]', 'run', 'up'], 'Start up an app', {}, (argv) => {
     console.log('starting up the', argv.app || 'default', 'app')
   })
@@ -167,6 +169,7 @@ simply needs to export:
 * `exports.describe`: string used as the description for the command in help text, use `false` for a hidden command
 * `exports.builder`: object declaring the options the command accepts, or a function accepting and returning a yargs instance
 * `exports.handler`: a function which will be passed the parsed argv.
+* `exports.deprecated`: a boolean (or string) to show deprecation notice.
 
 ```js
 // my-module.js
@@ -204,8 +207,33 @@ yargs.command('get <source> [proxy]', 'make a get HTTP request', require('my-mod
   .argv
 ```
 
+#### Testing a Command Module
+
+If you want to test a command in its entirety you can test it like this:
+
+```js
+it("returns help output", async () => {
+  // Initialize parser using the command module
+  const parser = yargs.command(require('./my-command-module')).help();
+
+  // Run the command module with --help as argument
+  const output = await new Promise((resolve) => {
+    parser.parse("--help", (err, argv, output) => {
+      resolve(output);
+    })
+  });
+
+  // Verify the output is correct
+  expect(output).toBe(expect.stringContaining("helpful message"));
+});
+```
+
+This example uses [jest](https://github.com/facebook/jest) as a test runner, but the concept is independent of framework.
+
 .commandDir(directory, [opts])
 ------------------------------
+
+_Note: `commandDir()` does not work with ESM or Deno, see [hierarchy using index.mjs](/docs/advanced.md#esm-hierarchy) for an example of building a complex nested CLI using ESM._
 
 Apply command modules from a directory relative to the module calling this method.
 
@@ -243,11 +271,11 @@ can either move your module to a different directory or use the `exclude` or
 
 - `include`: RegExp or function
 
-    Whitelist certain modules. See [`require-directory` whitelisting](https://www.npmjs.com/package/require-directory#whitelisting) for details.
+    Allow list certain modules. See [`require-directory`](https://www.npmjs.com/package/require-directory) for details.
 
 - `exclude`: RegExp or function
 
-    Blacklist certain modules. See [`require-directory` blacklisting](https://www.npmjs.com/package/require-directory#blacklisting) for details.
+    Block list certain modules. See [`require-directory`](https://www.npmjs.com/package/require-directory) for details.
 
 ### Example command hierarchy using `.commandDir()`
 
@@ -279,7 +307,7 @@ cli.js:
 
 ```js
 #!/usr/bin/env node
-require('yargs')
+require('yargs/yargs')(process.argv.slice(2))
   .commandDir('cmds')
   .demandCommand()
   .help()
@@ -334,6 +362,38 @@ exports.handler = function (argv) {
 }
 ```
 
+<a name="esm-hierarchy"></a>
+### Example command hierarchy using index.mjs
+
+To support creating a complex nested CLI when using ESM, the method
+`.command()` was extended to accept an array of command modules.
+Rather than using `.commandDir()`, create an `index.mjs` in each command
+directory with a list of the commands:
+
+cmds/index.mjs:
+
+```js
+import * as a from './init.mjs';
+import * as b from './remote.mjs';
+export const commands = [a, b];
+```
+
+This index will then be imported and registered with your CLI:
+
+cli.js:
+
+```js
+#!/usr/bin/env node
+
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
+import { commands } from './cmds/index.mjs';
+
+yargs(hideBin(process.argv))
+  .command(commands)
+  .argv;
+```
+
 <a name="configuration"></a>
 ## Building Configurable CLI Apps
 
@@ -357,7 +417,7 @@ const findUp = require('find-up')
 const fs = require('fs')
 const configPath = findUp.sync(['.myapprc', '.myapprc.json'])
 const config = configPath ? JSON.parse(fs.readFileSync(configPath)) : {}
-const argv = require('yargs')
+const argv = require('yargs/yargs')(process.argv.slice(2))
   .config(config)
   .argv
 ```
@@ -385,7 +445,7 @@ Yargs gives you this functionality using the [`pkgConf()`](/docs/api.md#config)
 method:
 
 ```js
-const argv = require('yargs')
+const argv = require('yargs/yargs')(process.argv.slice(2))
   .pkgConf('nyc')
   .argv
 ```
@@ -408,23 +468,34 @@ possible to build plugin architectures similar to [Babel's presets](https://babe
 ## Customizing Yargs' Parser
 
 Not everyone always agrees on how `process.argv` should be interpreted;
-using the `yargs` stanza in your `package.json` you can turn on and off
-some of yargs' parsing features:
+using the [`parserConfiguration()`](/docs/api.md#parserConfiguration) method you can turn on and off some of yargs' parsing features:
 
-```json
-{
-  "yargs": {
-    "short-option-groups": true,
-    "camel-case-expansion": true,
-    "dot-notation": true,
-    "parse-numbers": true,
-    "boolean-negation": true
-  }
-}
+```js
+yargs.parserConfiguration({
+  "short-option-groups": true,
+  "camel-case-expansion": true,
+  "dot-notation": true,
+  "parse-numbers": true,
+  "boolean-negation": true,
+  "deep-merge-config": false
+})
 ```
 
 See the [yargs-parser](https://github.com/yargs/yargs-parser#configuration) module
 for detailed documentation of this feature.
+
+## Command finish hook
+### Example
+```js
+yargs(process.argv.slice(2))
+    .command('cmd', 'a command', () => {}, async () => {
+        await this.model.find()
+        return Promise.resolve('result value')
+    })
+    .onFinishCommand(async (resultValue) => {
+        await this.db.disconnect()
+    }).argv
+```
 
 ## Middleware
 
@@ -447,7 +518,7 @@ In this example, our middleware will check if the `username` and `password` is p
 
 #### Middleware function
 
-```
+```js
 const normalizeCredentials = (argv) => {
   if (!argv.username || !argv.password) {
     const credentials = JSON.parse(fs.readSync('~/.credentials'))
@@ -455,19 +526,43 @@ const normalizeCredentials = (argv) => {
   }
   return {}
 }
+
+// Add normalizeCredentials to yargs
+yargs.middleware(normalizeCredentials)
+```
+
+### Example Async Credentials Middleware
+
+This example is exactly the same however it loads the `username` and `password` asynchronously.
+
+#### Middleware function
+
+```js
+const { promisify } = require('util') // since node 8.0.0
+const readFile = promisify(require('fs').readFile)
+
+const normalizeCredentials = (argv) => {
+  if (!argv.username || !argv.password) {
+    return readFile('~/.credentials').then(data => JSON.parse(data))
+  }
+  return {}
+}
+
+// Add normalizeCredentials to yargs
+yargs.middleware(normalizeCredentials)
 ```
 
 #### yargs parsing configuration
 
-```
-var argv = require('yargs')
+```js
+var argv = require('yargs/yargs')(process.argv.slice(2))
   .usage('Usage: $0 <command> [options]')
   .command('login', 'Authenticate user', (yargs) =>{
         return yargs.option('username')
                     .option('password')
       } ,(argv) => {
         authenticateUser(argv.username, argv.password)
-      }, 
+      },
       [normalizeCredentials]
      )
   .argv;
