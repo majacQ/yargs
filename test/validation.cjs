@@ -101,18 +101,34 @@ describe('validation tests', () => {
       failCalled.should.equal(true);
     });
 
+    it("doesn't fail if implied key exists with value 0", () => {
+      yargs('--foo --bar 0')
+        .implies('foo', 'bar')
+        .fail(() => {
+          expect.fail();
+        })
+        .parse();
+    });
+
+    it("doesn't fail if implied key exists with value false", () => {
+      yargs('--foo --bar false')
+        .implies('foo', 'bar')
+        .fail(() => {
+          expect.fail();
+        })
+        .parse();
+    });
+
     it('doesn\'t fail if implied key (with "no" in the name) is set', () => {
-      let failCalled = false;
       const argv = yargs('--bar --noFoo')
         .implies({
           bar: 'noFoo', // --bar means --noFoo (or --no-foo with boolean-negation disabled) is required
           // note that this has nothing to do with --foo
         })
-        .fail(msg => {
-          failCalled = true;
+        .fail(() => {
+          expect.fail();
         })
         .parse();
-      failCalled.should.equal(false);
       expect(argv.bar).to.equal(true);
       expect(argv.noFoo).to.equal(true);
       expect(argv.foo).to.equal(undefined);
@@ -134,17 +150,15 @@ describe('validation tests', () => {
     });
 
     it('doesn\'t fail if implied key (with "no" in the name) that should not be given is not set', () => {
-      let failCalled = false;
       const argv = yargs('--bar')
         .implies({
           bar: '--no-noFoo', // --bar means --noFoo (or --no-foo with boolean-negation disabled) cannot be given
           // note that this has nothing to do with --foo
         })
-        .fail(msg => {
-          failCalled = true;
+        .fail(() => {
+          expect.fail();
         })
         .parse();
-      failCalled.should.equal(false);
       expect(argv.bar).to.equal(true);
       expect(argv.noFoo).to.equal(undefined);
       expect(argv.foo).to.equal(undefined);
@@ -188,6 +202,27 @@ describe('validation tests', () => {
             .parse();
         })
         .parse();
+    });
+
+    // Addresses: https://github.com/yargs/yargs/issues/1952
+    it('fails if conflicting arguments are provided, and strip-dashed is enabled', () => {
+      yargs()
+        .option('foo-foo', {
+          description: 'a foo-foo',
+          type: 'string',
+        })
+        .option('bar-bar', {
+          description: 'a bar-bar',
+          type: 'string',
+        })
+        .conflicts({'foo-foo': 'bar-bar'})
+        .parserConfiguration({'strip-dashed': true})
+        .parse('--foo-foo a --bar-bar b', (error, argv, output) => {
+          expect(error).to.not.equal(null);
+          error.message.should.match(
+            /Arguments foo-foo and bar-bar are mutually exclusive/
+          );
+        });
     });
 
     it('should not fail if no conflicting arguments are provided', () => {
@@ -327,6 +362,29 @@ describe('validation tests', () => {
           return done();
         })
         .parse();
+      expect.fail('no parsing failure');
+    });
+
+    // addresses: https://github.com/yargs/yargs/issues/1861
+    it('fails in strict mode when no commands defined but command is passed', done => {
+      yargs
+        .strict()
+        .fail(msg => {
+          msg.should.equal('Unknown argument: foo');
+          done();
+        })
+        .parse('foo');
+      expect.fail('no parsing failure');
+    });
+
+    it('fails because of undefined command and not because of argument after --', done => {
+      yargs
+        .strict()
+        .fail(msg => {
+          msg.should.equal('Unknown argument: foo');
+          done();
+        })
+        .parse('foo -- hello');
       expect.fail('no parsing failure');
     });
 
@@ -916,7 +974,7 @@ describe('validation tests', () => {
     });
 
     it('does not fail for hidden options', () => {
-      const args = yargs('--foo hey')
+      const args = yargs('--foo')
         .strict()
         .option('foo', {boolean: true, describe: false})
         .fail(msg => {
@@ -926,8 +984,18 @@ describe('validation tests', () => {
       args.foo.should.equal(true);
     });
 
+    it('does not fail for hidden options but does for unknown arguments', () => {
+      const args = yargs('--foo hey')
+        .strict()
+        .option('foo', {boolean: true, describe: false})
+        .fail(msg => {
+          msg.should.equal('Unknown argument: hey');
+        })
+        .parse();
+    });
+
     it('does not fail if an alias is provided, rather than option itself', () => {
-      const args = yargs('--cat hey')
+      const args = yargs('--cat')
         .strict()
         .option('foo', {boolean: true, describe: false})
         .alias('foo', 'bar')

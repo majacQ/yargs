@@ -88,6 +88,7 @@ export function YargsFactory(_shim: PlatformShim) {
 const kCopyDoubleDash = Symbol('copyDoubleDash');
 const kCreateLogger = Symbol('copyDoubleDash');
 const kDeleteFromParserHintObject = Symbol('deleteFromParserHintObject');
+const kEmitWarning = Symbol('emitWarning');
 const kFreeze = Symbol('freeze');
 const kGetDollarZero = Symbol('getDollarZero');
 const kGetParserConfiguration = Symbol('getParserConfiguration');
@@ -172,6 +173,7 @@ export class YargsInstance {
   #defaultShowHiddenOpt = 'show-hidden';
   #exitError: YError | string | undefined | null = null;
   #detectLocale = true;
+  #emittedWarnings: Dictionary<boolean> = {};
   #exitProcess = true;
   #frozens: FrozenYargsInstance[] = [];
   #globalMiddleware: GlobalMiddleware;
@@ -547,9 +549,8 @@ export class YargsInstance {
     if (typeof value === 'function') {
       assertSingleKey(key, this.#shim);
       if (!this.#options.defaultDescription[key])
-        this.#options.defaultDescription[key] = this.#usage.functionDescription(
-          value
-        );
+        this.#options.defaultDescription[key] =
+          this.#usage.functionDescription(value);
       value = value.call();
     }
     this[kPopulateParserHintSingleValueDictionary]<'default'>(
@@ -810,7 +811,7 @@ export class YargsInstance {
       );
     } else {
       globals.forEach(g => {
-        if (this.#options.local.indexOf(g) === -1) this.#options.local.push(g);
+        if (!this.#options.local.includes(g)) this.#options.local.push(g);
       });
     }
     return this;
@@ -903,6 +904,23 @@ export class YargsInstance {
     } else {
       if (typeof opt !== 'object') {
         opt = {};
+      }
+
+      // Warn about version name collision
+      // Addresses: https://github.com/yargs/yargs/issues/1979
+      if (this.#versionOpt && (key === 'version' || opt?.alias === 'version')) {
+        this[kEmitWarning](
+          [
+            '"version" is a reserved word.',
+            'Please do one of the following:',
+            '- Disable version with `yargs.version(false)` if using "version" as an option',
+            '- Use the built-in `yargs.version` method instead (if applicable)',
+            '- Use a different option key',
+            'https://yargs.js.org/docs/#api-reference-version',
+          ].join('\n'),
+          undefined,
+          'versionWarning' // TODO: better dedupeId
+        );
       }
 
       this.#options.key[key] = true; // track manually set keys.
@@ -1094,11 +1112,9 @@ export class YargsInstance {
     _parseFn?: ParseCallback
   ): Promise<Arguments> {
     const maybePromise = this.parse(args, shortCircuit, _parseFn);
-    if (!isPromise(maybePromise)) {
-      return Promise.resolve(maybePromise);
-    } else {
-      return maybePromise;
-    }
+    return !isPromise(maybePromise)
+      ? Promise.resolve(maybePromise)
+      : maybePromise;
   }
   parseSync(
     args?: string | string[],
@@ -1159,17 +1175,15 @@ export class YargsInstance {
       'alias',
     ];
     opts = objFilter(opts, (k, v) => {
-      let accept = supportedOpts.indexOf(k) !== -1;
       // type can be one of string|number|boolean.
-      if (k === 'type' && ['string', 'number', 'boolean'].indexOf(v) === -1)
-        accept = false;
-      return accept;
+      if (k === 'type' && !['string', 'number', 'boolean'].includes(v))
+        return false;
+      return supportedOpts.includes(k);
     });
 
     // copy over any settings that can be inferred from the command string.
-    const fullCommand = this.#context.fullCommands[
-      this.#context.fullCommands.length - 1
-    ];
+    const fullCommand =
+      this.#context.fullCommands[this.#context.fullCommands.length - 1];
     const parseOptions = fullCommand
       ? this.#command.cmdToParseOptions(fullCommand)
       : {
@@ -1446,13 +1460,24 @@ export class YargsInstance {
         return;
       const hint = this.#options[hintKey];
       if (Array.isArray(hint)) {
-        if (~hint.indexOf(optionKey)) hint.splice(hint.indexOf(optionKey), 1);
+        if (hint.includes(optionKey)) hint.splice(hint.indexOf(optionKey), 1);
       } else if (typeof hint === 'object') {
         delete (hint as Dictionary)[optionKey];
       }
     });
     // now delete the description from usage.js.
     delete this.#usage.getDescriptions()[optionKey];
+  }
+  [kEmitWarning](
+    warning: string,
+    type: string | undefined,
+    deduplicationId: string
+  ) {
+    // prevent duplicate warning emissions
+    if (!this.#emittedWarnings[deduplicationId]) {
+      this.#shim.process.emitWarning(warning, type);
+      this.#emittedWarnings[deduplicationId] = true;
+    }
   }
   [kFreeze]() {
     this.#frozens.push({
@@ -1727,9 +1752,8 @@ export class YargsInstance {
       postProcess: this[kPostProcess].bind(this),
       reset: this[kReset].bind(this),
       runValidation: this[kRunValidation].bind(this),
-      runYargsParserAndExecuteCommands: this[
-        kRunYargsParserAndExecuteCommands
-      ].bind(this),
+      runYargsParserAndExecuteCommands:
+        this[kRunYargsParserAndExecuteCommands].bind(this),
       setHasOutput: this[kSetHasOutput].bind(this),
     };
   }
@@ -1789,10 +1813,8 @@ export class YargsInstance {
   [kReset](aliases: Aliases = {}): YargsInstance {
     this.#options = this.#options || ({} as Options);
     const tmpOptions = {} as Options;
-    tmpOptions.local = this.#options.local ? this.#options.local : [];
-    tmpOptions.configObjects = this.#options.configObjects
-      ? this.#options.configObjects
-      : [];
+    tmpOptions.local = this.#options.local || [];
+    tmpOptions.configObjects = this.#options.configObjects || [];
 
     // if a key has been explicitly set as local,
     // we should reset it before passing options to command.
@@ -1973,7 +1995,7 @@ export class YargsInstance {
           .concat(aliases[this.#helpOpt] || [])
           .filter(k => k.length > 1);
         // check if help should trigger and strip it from _.
-        if (~helpCmds.indexOf('' + argv._[argv._.length - 1])) {
+        if (helpCmds.includes('' + argv._[argv._.length - 1])) {
           argv._.pop();
           helpOptSet = true;
         }
@@ -1987,7 +2009,7 @@ export class YargsInstance {
           let firstUnknownCommand;
           for (let i = commandIndex || 0, cmd; argv._[i] !== undefined; i++) {
             cmd = String(argv._[i]);
-            if (~handlerKeys.indexOf(cmd) && cmd !== this.#completionCommand) {
+            if (handlerKeys.includes(cmd) && cmd !== this.#completionCommand) {
               // commands are executed using a recursive algorithm that executes
               // the deepest command first; we keep track of the position in the
               // argv._ array that is currently being executed.
@@ -2033,7 +2055,7 @@ export class YargsInstance {
         // generate a completion script for adding to ~/.bashrc.
         if (
           this.#completionCommand &&
-          ~argv._.indexOf(this.#completionCommand) &&
+          argv._.includes(this.#completionCommand) &&
           !requestCompletions
         ) {
           if (this.#exitProcess) setBlocking(true);
@@ -2109,7 +2131,7 @@ export class YargsInstance {
         );
       }
 
-      // If the help or version options where used and exitProcess is false,
+      // If the help or version options were used and exitProcess is false,
       // or if explicitly skipped, we won't run validations.
       if (!skipValidation) {
         if (parsed.error) throw new YError(parsed.error.message);
@@ -2157,8 +2179,6 @@ export class YargsInstance {
     parseErrors: Error | null,
     isDefaultCommand?: boolean
   ): (argv: Arguments) => void {
-    aliases = {...aliases};
-    positionalMap = {...positionalMap};
     const demandedOptions = {...this.getDemandedOptions()};
     return (argv: Arguments) => {
       if (parseErrors) throw new YError(parseErrors.message);

@@ -9,6 +9,7 @@ exports.checkOutput = function checkOutput(f, argv, cb) {
   let exitCode = 0;
   const _exit = process.exit;
   const _emit = process.emit;
+  const _emitWarning = process.emitWarning;
   const _env = process.env;
   const _argv = process.argv;
   const _error = console.error;
@@ -25,6 +26,7 @@ exports.checkOutput = function checkOutput(f, argv, cb) {
   const errors = [];
   const logs = [];
   const warnings = [];
+  const emittedWarnings = [];
 
   console.error = (...msg) => {
     errors.push(format(...msg));
@@ -34,6 +36,9 @@ exports.checkOutput = function checkOutput(f, argv, cb) {
   };
   console.warn = (...msg) => {
     warnings.push(format(...msg));
+  };
+  process.emitWarning = warning => {
+    emittedWarnings.push(warning);
   };
 
   let result;
@@ -57,13 +62,15 @@ exports.checkOutput = function checkOutput(f, argv, cb) {
     try {
       result = f();
       if (typeof result.then === 'function') {
-        return result.then((r) => {
-          reset();
-          return done();
-        }).catch(() => {
-          reset();
-          return done();
-        });
+        return result
+          .then(() => {
+            reset();
+            return done();
+          })
+          .catch(() => {
+            reset();
+            return done();
+          });
       } else {
         reset();
       }
@@ -78,6 +85,7 @@ exports.checkOutput = function checkOutput(f, argv, cb) {
     process.emit = _emit;
     process.env = _env;
     process.argv = _argv;
+    process.emitWarning = _emitWarning;
 
     console.error = _error;
     console.log = _log;
@@ -91,6 +99,7 @@ exports.checkOutput = function checkOutput(f, argv, cb) {
       errors,
       logs,
       warnings,
+      emittedWarnings,
       exit,
       exitCode,
       result,

@@ -5,6 +5,7 @@
 const checkUsage = require('./helpers/utils.cjs').checkOutput;
 const chalk = require('chalk');
 const yargs = require('../index.cjs');
+const expect = require('chai').expect;
 const {YError} = require('../build/index.cjs');
 
 const should = require('chai').should();
@@ -1570,6 +1571,54 @@ describe('usage tests', () => {
       r.logs[0].should.eql('1.0.2');
     });
 
+    // Addresses: https://github.com/yargs/yargs/issues/1979
+    describe('when an option or alias "version" is set', () => {
+      it('emits warning if version is not disabled', () => {
+        const r = checkUsage(() =>
+          yargs
+            .command('cmd1', 'cmd1 desc', yargs =>
+              yargs.option('v', {
+                alias: 'version',
+                describe: 'version desc',
+                type: 'string',
+              })
+            )
+            .fail(() => {
+              expect.fail();
+            })
+            .wrap(null)
+            .parse('cmd1 --version 0.25.10')
+        );
+        r.should.have.property('emittedWarnings').with.length(1);
+        r.emittedWarnings[0].should.match(/reserved word/);
+      });
+
+      it('does not emit warning if version is disabled', () => {
+        const r = checkUsage(() =>
+          yargs
+            .command(
+              'cmd1',
+              'cmd1 desc',
+              yargs =>
+                yargs.version(false).option('version', {
+                  alias: 'v',
+                  describe: 'version desc',
+                  type: 'string',
+                }),
+              argv => {
+                argv.version.should.equal('0.25.10');
+              }
+            )
+            .fail(() => {
+              expect.fail();
+            })
+            .parse('cmd1 --version 0.25.10')
+        );
+
+        r.should.have.property('emittedWarnings').with.length(0);
+      });
+    });
+
     describe('when exitProcess is false', () => {
       it('should not validate arguments (required argument)', () => {
         const r = checkUsage(() =>
@@ -1883,6 +1932,32 @@ describe('usage tests', () => {
           `  -f, --file     ${yellowDescription}                   [string] [required]`,
           '  -h, --help     Show help                                             [boolean]',
         ]);
+    });
+
+    it('should not indent usage when no wrap is specified', () => {
+      const expected = [
+        '                              My greatest CLI App',
+        'Hello, world',
+        '',
+        'Options:',
+        '  --help     Show help  [boolean]',
+        '  --version  Show version number  [boolean]',
+      ];
+
+      const r = checkUsage(() =>
+        yargs('--help')
+          .usage(
+            [
+              '                              My greatest CLI App',
+              'Hello, world',
+            ].join('\n')
+          )
+          .wrap(null)
+          .parse()
+      );
+
+      // the leading whitespaces on the first line should not cause indentation to usage string
+      r.logs[0].split('\n').should.deep.equal(expected);
     });
   });
 
@@ -2524,7 +2599,7 @@ describe('usage tests', () => {
         ]);
     });
 
-    it('allows a builder to add more than one usage with mutiple usage calls', () => {
+    it('allows a builder to add more than one usage with multiple usage calls', () => {
       const r = checkUsage(() =>
         yargs('upload --help')
           .command(

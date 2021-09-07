@@ -8,7 +8,7 @@ import {YargsInstance} from './yargs-factory.js';
 import {Arguments, DetailedArguments} from './typings/yargs-parser-types.js';
 
 // add bash completions to your
-//  yargs-powered applications.
+// yargs-powered applications.
 
 type CompletionCallback = (
   err: Error | null,
@@ -68,6 +68,7 @@ export class Completion implements CompletionInstance {
 
     this.commandCompletions(completions, args, current);
     this.optionCompletions(completions, args, argv, current);
+    this.choicesCompletions(completions, args, argv, current);
     done(null, completions);
   }
 
@@ -77,11 +78,13 @@ export class Completion implements CompletionInstance {
     args: string[],
     current: string
   ) {
-    const parentCommands = this.yargs.getInternalMethods().getContext()
-      .commands;
+    const parentCommands = this.yargs
+      .getInternalMethods()
+      .getContext().commands;
     if (
       !current.match(/^-/) &&
-      parentCommands[parentCommands.length - 1] !== current
+      parentCommands[parentCommands.length - 1] !== current &&
+      !this.previousArgHasChoices(args)
     ) {
       this.usage.getCommands().forEach(usageCommand => {
         const commandName = parseCommand(usageCommand[0]).cmd;
@@ -104,7 +107,10 @@ export class Completion implements CompletionInstance {
     argv: Arguments,
     current: string
   ) {
-    if (current.match(/^-/) || (current === '' && completions.length === 0)) {
+    if (
+      (current.match(/^-/) || (current === '' && completions.length === 0)) &&
+      !this.previousArgHasChoices(args)
+    ) {
       const options = this.yargs.getOptions();
       const positionalKeys =
         this.yargs.getGroups()[this.usage.getPositionalGroupName()] || [];
@@ -126,6 +132,48 @@ export class Completion implements CompletionInstance {
         }
       });
     }
+  }
+
+  private choicesCompletions(
+    completions: string[],
+    args: string[],
+    argv: Arguments,
+    current: string
+  ) {
+    if (this.previousArgHasChoices(args)) {
+      const choices = this.getPreviousArgChoices(args);
+      if (choices && choices.length > 0) {
+        completions.push(...choices);
+      }
+    }
+  }
+
+  private getPreviousArgChoices(args: string[]): string[] | void {
+    if (args.length < 1) return; // no args
+    let previousArg = args[args.length - 1];
+    let filter = '';
+    // use second to last argument if the last one is not an option starting with --
+    if (!previousArg.startsWith('--') && args.length > 1) {
+      filter = previousArg; // use last arg as filter for choices
+      previousArg = args[args.length - 2];
+    }
+    if (!previousArg.startsWith('--')) return; // still no valid arg, abort
+    const previousArgKey = previousArg.replace(/-/g, '');
+
+    const options = this.yargs.getOptions();
+    if (
+      Object.keys(options.key).some(key => key === previousArgKey) &&
+      Array.isArray(options.choices[previousArgKey])
+    ) {
+      return options.choices[previousArgKey].filter(
+        choice => !filter || choice.startsWith(filter)
+      );
+    }
+  }
+
+  private previousArgHasChoices(args: string[]): boolean {
+    const choices = this.getPreviousArgChoices(args);
+    return choices !== undefined && choices.length > 0;
   }
 
   private argsContainKey(
@@ -240,7 +288,7 @@ export class Completion implements CompletionInstance {
       : templates.completionShTemplate;
     const name = this.shim.path.basename($0);
 
-    // add ./to applications not yet installed as bin.
+    // add ./ to applications not yet installed as bin.
     if ($0.match(/\.js$/)) $0 = `./${$0}`;
 
     script = script.replace(/{{app_name}}/g, name);
@@ -249,8 +297,8 @@ export class Completion implements CompletionInstance {
   }
 
   // register a function to perform your own custom
-  // completions., this function can be either
-  // synchrnous or asynchronous.
+  // completions. this function can be either
+  // synchronous or asynchronous.
   registerFunction(fn: CompletionFunction) {
     this.customCompletionFunction = fn;
   }

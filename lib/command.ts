@@ -224,29 +224,27 @@ export class CommandInstance {
       helpOnly,
       helpOrVersionSet
     );
-    if (isPromise(builderResult)) {
-      return builderResult.then(result => {
-        return this.applyMiddlewareAndGetResult(
+    return isPromise(builderResult)
+      ? builderResult.then(result =>
+          this.applyMiddlewareAndGetResult(
+            isDefaultCommand,
+            commandHandler,
+            result.innerArgv,
+            currentContext,
+            helpOnly,
+            result.aliases,
+            yargs
+          )
+        )
+      : this.applyMiddlewareAndGetResult(
           isDefaultCommand,
           commandHandler,
-          result.innerArgv,
+          builderResult.innerArgv,
           currentContext,
           helpOnly,
-          result.aliases,
+          builderResult.aliases,
           yargs
         );
-      });
-    } else {
-      return this.applyMiddlewareAndGetResult(
-        isDefaultCommand,
-        commandHandler,
-        builderResult.innerArgv,
-        currentContext,
-        helpOnly,
-        builderResult.aliases,
-        yargs
-      );
-    }
   }
   private applyBuilderUpdateUsageAndParse(
     isDefaultCommand: boolean,
@@ -336,19 +334,16 @@ export class CommandInstance {
         commandIndex,
         helpOnly
       );
-    if (isPromise(innerArgv)) {
-      return innerArgv.then(argv => {
-        return {
+
+    return isPromise(innerArgv)
+      ? innerArgv.then(argv => ({
           aliases: (innerYargs.parsed as DetailedArguments).aliases,
           innerArgv: argv,
+        }))
+      : {
+          aliases: (innerYargs.parsed as DetailedArguments).aliases,
+          innerArgv: innerArgv,
         };
-      });
-    } else {
-      return {
-        aliases: (innerYargs.parsed as DetailedArguments).aliases,
-        innerArgv: innerArgv,
-      };
-    }
   }
   private shouldUpdateUsage(yargs: YargsInstance) {
     return (
@@ -418,9 +413,8 @@ export class CommandInstance {
       yargs.getInternalMethods().setHasOutput();
       // to simplify the parsing of positionals in commands,
       // we temporarily populate '--' rather than _, with arguments
-      const populateDoubleDash = !!yargs.getOptions().configuration[
-        'populate--'
-      ];
+      const populateDoubleDash =
+        !!yargs.getOptions().configuration['populate--'];
       yargs
         .getInternalMethods()
         .postProcess(innerArgv, populateDoubleDash, false, false);
@@ -428,11 +422,9 @@ export class CommandInstance {
       innerArgv = applyMiddleware(innerArgv, yargs, middlewares, false);
       innerArgv = maybeAsyncResult<Arguments>(innerArgv, result => {
         const handlerResult = commandHandler.handler(result as Arguments);
-        if (isPromise(handlerResult)) {
-          return handlerResult.then(() => result);
-        } else {
-          return result;
-        }
+        return isPromise(handlerResult)
+          ? handlerResult.then(() => result)
+          : result;
       });
 
       if (!isDefaultCommand) {
@@ -601,12 +593,25 @@ export class CommandInstance {
         positionalKeys.push(...parsed.aliases[key]);
       });
 
+      const defaults = yargs.getOptions().default;
       Object.keys(parsed.argv).forEach(key => {
-        if (positionalKeys.indexOf(key) !== -1) {
+        if (positionalKeys.includes(key)) {
           // any new aliases need to be placed in positionalMap, which
           // is used for validation.
           if (!positionalMap[key]) positionalMap[key] = parsed.argv[key];
-          argv[key] = parsed.argv[key];
+          // Addresses: https://github.com/yargs/yargs/issues/1637
+          // If both positionals/options provided, no default was set,
+          // and if at least one is an array: don't overwrite, combine.
+          if (
+            !Object.prototype.hasOwnProperty.call(defaults, key) &&
+            Object.prototype.hasOwnProperty.call(argv, key) &&
+            Object.prototype.hasOwnProperty.call(parsed.argv, key) &&
+            (Array.isArray(argv[key]) || Array.isArray(parsed.argv[key]))
+          ) {
+            argv[key] = ([] as string[]).concat(argv[key], parsed.argv[key]);
+          } else {
+            argv[key] = parsed.argv[key];
+          }
         }
       });
     }

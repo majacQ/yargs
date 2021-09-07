@@ -209,6 +209,77 @@ describe('Command', () => {
       argv['--'].should.eql(['apple', 'banana']);
       called.should.equal(true);
     });
+
+    // Addresses: https://github.com/yargs/yargs/issues/1637
+    it('does not overwrite options in argv if variadic', () => {
+      yargs
+        .command({
+          command: 'cmd [foods..]',
+          desc: 'cmd desc',
+          builder: yargs =>
+            yargs.positional('foods', {
+              desc: 'foods desc',
+              type: 'string',
+            }),
+          handler: argv => {
+            argv.foods.should.deep.equal(['apples', 'cherries', 'grapes']);
+          },
+        })
+        .parse('cmd --foods apples cherries grapes');
+    });
+
+    it('does not overwrite options in argv if variadic and when using default command', () => {
+      yargs
+        .command({
+          command: '$0 [foods..]',
+          desc: 'default desc',
+          builder: yargs =>
+            yargs.positional('foods', {
+              desc: 'foods desc',
+              type: 'string',
+            }),
+          handler: argv => {
+            argv.foods.should.deep.equal(['apples', 'cherries', 'grapes']);
+          },
+        })
+        .parse('--foods apples cherries grapes');
+    });
+
+    it('does not combine positional default and provided values', () => {
+      yargs()
+        .command({
+          command: 'cmd [foods..]',
+          desc: 'cmd desc',
+          builder: yargs =>
+            yargs.positional('foods', {
+              desc: 'foods desc',
+              type: 'string',
+              default: ['pizza', 'wings'],
+            }),
+          handler: argv => {
+            argv.foods.should.deep.equal(['apples', 'cherries', 'grapes']);
+            argv.foods.should.not.include('pizza');
+          },
+        })
+        .parse('cmd apples cherries grapes');
+    });
+
+    it('does not overwrite options in argv if variadic and preserves falsy values', () => {
+      yargs
+        .command({
+          command: '$0 [numbers..]',
+          desc: 'default desc',
+          builder: yargs =>
+            yargs.positional('numbers', {
+              desc: 'numbers desc',
+              type: 'number',
+            }),
+          handler: argv => {
+            argv.numbers.should.deep.equal([0, 1, 2]);
+          },
+        })
+        .parse('--numbers 0 1 2');
+    });
   });
 
   describe('variadic', () => {
@@ -1547,6 +1618,35 @@ describe('Command', () => {
             return done();
           });
       });
+
+      // addresses https://github.com/yargs/yargs/issues/1966
+      it('should not be applied multiple times for nested commands', () => {
+        let coerceExecutionCount = 0;
+
+        const argv = yargs('cmd1 cmd2 foo bar baz')
+          .command('cmd1', 'cmd1 desc', yargs =>
+            yargs.command('cmd2 <positional1> <rest...>', 'cmd2 desc', yargs =>
+              yargs
+                .positional('rest', {
+                  type: 'string',
+                  coerce: arg => {
+                    if (coerceExecutionCount) {
+                      throw Error('coerce applied multiple times');
+                    }
+                    coerceExecutionCount++;
+                    return arg.join(' ');
+                  },
+                })
+                .fail(() => {
+                  expect.fail();
+                })
+            )
+          )
+          .parse();
+
+        argv.rest.should.equal('bar baz');
+        coerceExecutionCount.should.equal(1);
+      });
     });
 
     describe('defaults', () => {
@@ -1813,7 +1913,7 @@ describe('Command', () => {
   });
 
   // see: https://github.com/yargs/yargs/issues/853
-  it('should not execute command if it is proceeded by another positional argument', () => {
+  it('should not execute command if it is preceded by another positional argument', () => {
     let commandCalled = false;
     yargs()
       .command('foo', 'foo command', noop, () => {
